@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. IDENTITY & TENANCY
+// ==========================================
+
+model User {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+  timezone     String            @default("UTC")
+  theme        String            @default("dark")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner          User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members        WorkspaceMember[]
+  projects       Project[]
+  workflowStates WorkflowState[]
+  labels         Label[]
+  teams          Team[]
+  issues         Issue[]
+  comments       Comment[]
+  activities     ActivityLog[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role     @default(MEMBER)
+  joinedAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedIssues Issue[]       @relation("IssueAssignee")
+  authoredIssues Issue[]       @relation("IssueAuthor")
+  comments       Comment[]     @relation("CommentAuthor")
+  activities     ActivityLog[] @relation("ActivityActor")
+
+  @@unique([workspaceId, userId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  DEVELOPER
+  QA
+  VIEWER
+  MEMBER
+}
+
+// ==========================================
+// 2. WORK HIERARCHY
+// ==========================================
+
+model Team {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  workspaceId String
+  name        String
+  identifier  String        // e.g., 'EMP'
+  description String?
+  status      ProjectStatus @default(PLANNED)
+  targetDate  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issues    Issue[]
+  cycles    Cycle[]
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model Cycle {
+  id          String    @id @default(uuid())
+  projectId   String
+  name        String    // e.g., 'Sprint 1'
+  startDate   DateTime
+  endDate     DateTime
+  status      String    @default("PLANNED")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  Issue[]
+}
+
+// ==========================================
+// 3. WORKFLOW & ATTRIBUTES
+// ==========================================
+
+model WorkflowState {
+  id          String        @id @default(uuid())
+  workspaceId String
+  name        String        // e.g., 'Todo', 'In Progress', 'In Review', 'Done'
+  category    StateCategory @default(UNSTARTED)
+  position    Int
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issues    Issue[]
+}
+
+enum StateCategory {
+  BACKLOG
+  UNSTARTED
+  STARTED
+  COMPLETED
+  CANCELED
+}
+
+model Label {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  color       String
+  
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issues    Issue[]   @relation("IssueLabels")
+}
+
+// ==========================================
+// 4. ISSUES & COLLABORATION
+// ==========================================
+
+model Issue {
+  id          String        @id @default(uuid())
+  workspaceId String
+  projectId   String
+  identifier  String        // e.g., 'EMP-12'
+  title       String
+  description String?
+  priority    IssuePriority @default(MEDIUM)
+  statusId    String
+  authorId    String
+  assigneeId  String?
+  cycleId     String?
+  parentId    String?
+  dueDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status    WorkflowState   @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  author    WorkspaceMember @relation("IssueAuthor", fields: [authorId], references: [id])
+  assignee  WorkspaceMember? @relation("IssueAssignee", fields: [assigneeId], references: [id])
+  cycle     Cycle?          @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  
+  parent    Issue?          @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subIssues Issue[]         @relation("SubTasks")
+
+  labels     Label[]       @relation("IssueLabels")
+  comments   Comment[]
+  activities ActivityLog[]
+
+  @@unique([projectId, identifier])
+}
+
+enum IssuePriority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  workspaceId String
+  issueId     String
+  authorId    String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issue     Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author    WorkspaceMember @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  issueId     String?
+  actorId     String
+  action      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issue     Issue?          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  actor     WorkspaceMember @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+}

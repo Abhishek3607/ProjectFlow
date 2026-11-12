@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables (CRITICAL - keeps Neon DB & JWT secrets safe)
+.env
+.env.*
+!.env.example
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+.turbo/
+
+# Logs & OS files
+*.log
+.DS_Store
+Thumbs.db
