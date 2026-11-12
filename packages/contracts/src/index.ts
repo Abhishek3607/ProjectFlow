@@ -84,3 +84,22 @@ export const UpdateIssueStatusSchema = z.object({
 });
 
 export type UpdateIssueStatusRequest = z.infer<typeof UpdateIssueStatusSchema>;
+
+// ==========================================
+// ISSUE DETAIL & COMMENTS SCHEMAS (MILESTONE 3)
+// ==========================================
+
+export const UpdateIssueSchema = z.object({
+  title: z.string().trim().min(2, 'Title must be at least 2 characters').max(200).optional(),
+  description: z.string().trim().max(5000).nullable().optional(),
+  priority: z.enum(['URGENT', 'HIGH', 'MEDIUM', 'LOW']).optional(),
+  statusId: z.string().uuid('Invalid status ID').optional(),
+});
+
+export type UpdateIssueRequest = z.infer<typeof UpdateIssueSchema>;
+
+export const CreateCommentSchema = z.object({
+  content: z.string().trim().min(1, 'Comment cannot be empty').max(2000),
+});
+
+export type CreateCommentRequest = z.infer<typeof CreateCommentSchema>;

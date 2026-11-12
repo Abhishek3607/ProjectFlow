@@ -203,3 +203,16 @@ export async function loginHandler(req: Request, res: Response) {
     });
   }
 }
+
+export function logoutHandler(_req: Request, res: Response) {
+  res.clearCookie('token', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  });
+
+  return res.json({
+    success: true,
+    data: { message: 'Logged out successfully' },
+  });
+}
